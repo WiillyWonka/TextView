@@ -1,0 +1,50 @@
+# depslib dependency file v1.0
+1569828675 source:c:\users\rizhe\downloads\main.cpp
+	<tchar.h>
+	<windows.h>
+	<stdio.h>
+
+1570282986 source:c:\users\rizhe\desktop\ui\fstrings.c
+	"fStrings.h"
+
+1570282879 c:\users\rizhe\desktop\ui\fstrings.h
+	<stdio.h>
+
+1572621536 source:c:\users\rizhe\desktop\ui\main.c
+	<tchar.h>
+	<windows.h>
+	<stdio.h>
+	<limits.h>
+	<locale.h>
+	"Storage.h"
+	"PresentModel.h"
+	"menu.h"
+
+1572450135 source:c:\users\rizhe\desktop\ui\storage.c
+	"Storage.h"
+
+1572518884 c:\users\rizhe\desktop\ui\storage.h
+	<stdio.h>
+	<stdlib.h>
+
+1572598220 c:\users\rizhe\desktop\ui\presentmodel.h
+	<windows.h>
+	"Storage.h"
+
+1572622424 source:c:\users\rizhe\desktop\ui\presentmodel.c
+	"PresentModel.h"
+	"menu.h"
+
+1572621834 source:c:\users\rizhe\desktop\ui\menu.rc
+	"menu.h"
+	<windows.h>
+	<CommCtrl.h>
+
+1572619834 c:\users\rizhe\desktop\ui\menu.h
+	"PresentModel.h"
+
+1572622403 source:c:\users\rizhe\desktop\ui\menu.c
+	<stdio.h>
+	"PresentModel.h"
+	"menu.h"
+

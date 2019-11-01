@@ -11,6 +11,7 @@
 #include <locale.h>
 #include "Storage.h"
 #include "PresentModel.h"
+#include "menu.h"
 
 /*  Declare Windows procedure  */
 LRESULT CALLBACK WindowProcedure (HWND, UINT, WPARAM, LPARAM);
@@ -38,6 +39,7 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
     wincl.cbSize = sizeof (WNDCLASSEX);
 
     /* Use default icon and mouse-pointer */
+    wincl.lpszMenuName = MAKEINTRESOURCE(MYMENU);
     wincl.hIcon = LoadIcon (NULL, IDI_APPLICATION);
     wincl.hIconSm = LoadIcon (NULL, IDI_APPLICATION);
     wincl.hCursor = LoadCursor (NULL, IDC_ARROW);
@@ -51,6 +53,7 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
     if (!RegisterClassEx (&wincl))
         return 0;
 
+    HMENU hMenu = LoadMenu(hThisInstance, MYMENU);
     /* The class is registered, let's create the program*/
     hwnd = CreateWindowEx (
            0,                   /* Extended possibilites for variation */
@@ -59,7 +62,7 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
             WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_HSCROLL,
             CW_USEDEFAULT, CW_USEDEFAULT,
             CW_USEDEFAULT, CW_USEDEFAULT,
-            NULL, NULL, hThisInstance, lpszArgument               /* No Window Creation data */
+            NULL, hMenu, hThisInstance, lpszArgument
            );
 
     /* Make the window visible on the screen */
@@ -85,6 +88,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 {
     static PresentModel presModel;
     static int iHscrollMax, iVscrollMax;
+    HMENU hMenu;
     int i, x, y, iVscrollInc, iHscrollInc;
     HDC hdc;
     PAINTSTRUCT ps;
@@ -107,7 +111,8 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              FILE* fp = fopen(file,"rb");
              if (!fp) {
                 MessageBox(hwnd, TEXT("Cannot open file"), TEXT("Error"), MB_OK);
-                break;
+                PostQuitMessage (0);
+                return 0;
              }
 
 
@@ -117,16 +122,13 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              initPresentModel(&hdc, &presModel, &lParam);
              fillPresentModel(&presModel, fp);
 
-             /*if (presModel.layoutMode) {
-                reconfigureText(&presModel);
-            }*/
-
              fclose(fp);
 
              ReleaseDC(hwnd, hdc);
              return 0;
         }
         case WM_SIZE : {
+            presModel.cxClientPrev = presModel.cxClient;
             presModel.cxClient = LOWORD(lParam);
             presModel.cyClient = HIWORD(lParam);
 
@@ -145,6 +147,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                 presModel.VCoef = 1;
             }
 
+            presModel.iVscrollPos = (double)presModel.startLine / presModel.VCoef;
             presModel.iVscrollPos = min(presModel.iVscrollPos, iVscrollMax);
             SetScrollRange(hwnd, SB_VERT, 0, iVscrollMax, FALSE);
             SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
@@ -204,6 +207,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
             if (iVscrollInc != 0) {
                 presModel.iVscrollPos += iVscrollInc;
+                presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos;
                 ScrollWindow(hwnd, 0, -presModel.VCoef*presModel.cyChar*iVscrollInc, NULL, NULL);
                 SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
                 UpdateWindow(hwnd);
@@ -255,9 +259,68 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             EndPaint(hwnd, &ps);
             return 0;
         }
+        case WM_KEYDOWN: {
+            iVscrollInc = iHscrollInc = 0;
+
+            switch (wParam)
+            {
+            case VK_UP:
+                iVscrollInc = -1;
+                break;
+            case VK_DOWN:
+                iVscrollInc = 1;
+                break;
+            case VK_PRIOR:
+                iVscrollInc = min(-1, - (int)(presModel.cyClient / (int)presModel.cyChar));
+                break;
+            case VK_NEXT:
+                iVscrollInc = max(1, presModel.cyClient / presModel.cyChar);
+                break;
+            case VK_LEFT:
+                iHscrollInc = -1;
+                break;
+            case VK_RIGHT:
+                iHscrollInc = 1;
+                break;
+            }
+
+            if (iVscrollInc + presModel.iVscrollPos >= iVscrollMax) {
+                iVscrollInc = iVscrollMax - presModel.iVscrollPos;
+            }
+            if (iVscrollInc + presModel.iVscrollPos <= 0) {
+                iVscrollInc = -(int)(presModel.iVscrollPos);
+            }
+
+            if (iVscrollInc != 0) {
+                presModel.iVscrollPos += iVscrollInc;
+                presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos;
+                ScrollWindow(hwnd, 0, -presModel.VCoef*presModel.cyChar*iVscrollInc, NULL, NULL);
+                SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
+                UpdateWindow(hwnd);
+            }
+
+            if (iHscrollInc + presModel.iHscrollPos >= iHscrollMax) {
+                iHscrollInc = iHscrollMax - presModel.iHscrollPos;
+            }
+            if (iHscrollInc + presModel.iHscrollPos <= 0) {
+                iHscrollInc = -presModel.iHscrollPos;
+            }
+            //printf("%d", iHscrollInc);
+            if (iHscrollInc != 0) {
+                presModel.iHscrollPos += iHscrollInc;
+                ScrollWindow(hwnd, -(presModel.HCoef*presModel.cxChar*iHscrollInc), 0, NULL, NULL);
+                SetScrollPos(hwnd, SB_HORZ, presModel.iHscrollPos, TRUE);
+                UpdateWindow(hwnd);
+            }
+        }
+        case WM_COMMAND:
+            hMenu = GetMenu(hwnd);
+            menuAction(hwnd, wParam, &presModel);
+            break;
         default:                      /* for messages that we don't deal with */
             return DefWindowProc (hwnd, message, wParam, lParam);
     }
+
 
     return 0;
 }

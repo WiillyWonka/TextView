@@ -1,4 +1,5 @@
 #include "PresentModel.h"
+#include "menu.h"
 
 void initPresentModel(HDC* hdc, PresentModel* presModel, LPARAM* lParam) {
     TEXTMETRIC tm;
@@ -9,7 +10,7 @@ void initPresentModel(HDC* hdc, PresentModel* presModel, LPARAM* lParam) {
     presModel->cyClient = HIWORD(*lParam);
     presModel->cxChar = tm.tmAveCharWidth;
     presModel->cyChar = tm.tmHeight + tm.tmExternalLeading;
-    presModel->layoutMode = 1;
+    presModel->layoutMode = IDM_DEFAULT;
     presModel->storage = (Storage*)malloc(sizeof(Storage));
     presModel->iVscrollPos = presModel->iHscrollPos = 0;
     presModel->VCoef = presModel->VCoef = 1;
@@ -25,18 +26,17 @@ void fillPresentModel(PresentModel* presModel, FILE* fp) {
 }
 
 void PrintText(HDC* hdc, PAINTSTRUCT* ps, PresentModel* presModel) {
-    double a = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.top / presModel->cyChar - 1;
-    double iPaintBeg =  max(0, a);
-    a = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.bottom / presModel->cyChar;
-    double iPaintEnd = min(presModel->storage->amount, a);
-    int HorzBeg = max(0, presModel->iHscrollPos + ps->rcPaint.left / presModel->cxChar);
-    int rectLen = (ps->rcPaint.right - ps->rcPaint.left) / presModel->cxChar;
+    int a = presModel->startLine + ps->rcPaint.top / presModel->cyChar - 1;
+    int iPaintBeg =  max(0, a);
+    a = presModel->startLine + ps->rcPaint.bottom / presModel->cyChar;
+    int iPaintEnd = min(presModel->storage->amount, a);
     int i, x, y, strLength;
 
     for(i = iPaintBeg; i < iPaintEnd; i++)
     {
+
         x = presModel->cxChar *(1 - presModel->iHscrollPos);
-        y = presModel->cyChar *(1 - presModel->iVscrollPos*presModel->VCoef + i);
+        y = presModel->cyChar *(1 - presModel->startLine + i);
 
         strLength = (i < presModel->amount - 1)?
                   presModel->strPtr[i + 1] - presModel->strPtr[i]:
@@ -46,63 +46,8 @@ void PrintText(HDC* hdc, PAINTSTRUCT* ps, PresentModel* presModel) {
                  presModel->strPtr[i],
                  strLength);
     }
-
-
-    /*double buf = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.top / presModel->cyChar - 1;
-    double VertBeg =  max(0, buf);
-    buf = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.bottom / presModel->cyChar;
-    double VertEnd = min(presModel->amount, buf);
-
-    buf = presModel->HCoef * presModel->iHscrollPos + ps->rcPaint.left / presModel->cxChar;
-    double HorzBeg = max(0, buf);
-    double HorzEnd = presModel->HCoef * presModel->iHscrollPos + ps->rcPaint.right / presModel->cxChar;
-    double rectLen = (HorzEnd - HorzBeg);
-    int i, x, y, strLength;
-
-    printf("rectLen %f\n", rectLen);
-    printf("cxClient/cxChar %d\n", presModel->cxClient/presModel->cxChar);
-    for(i = VertBeg; i < VertEnd; i++)
-    {
-        x = presModel->cxChar *(1 - presModel->iHscrollPos*presModel->HCoef + HorzBeg);
-        y = presModel->cyChar *(1 - presModel->iVscrollPos*presModel->VCoef + i);
-
-        strLength = (i < presModel->storage->amount - 1)?
-                  presModel->strPtr[i + 1] - presModel->strPtr[i]:
-                  presModel->storage->text + presModel->storage->len - presModel->strPtr[i];
-
-        buf = strLength - HorzBeg;
-        if (buf > 0) {
-            TextOut(*hdc, x, y,
-                     presModel->strPtr[i] + rint(HorzBeg),
-                     min(buf, (int)rectLen));
-        }
-    }*/
 }
-/*void LayoutMode(HDC* hdc, PAINTSTRUCT* ps, PresentModel* presModel) {}
-void DefMode(HDC* hdc, PAINTSTRUCT* ps, PresentModel* presModel){
-    double a = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.top / presModel->cyChar - 1;
-    double iPaintBeg =  max(0, a);
-    a = presModel->VCoef * presModel->iVscrollPos + ps->rcPaint.bottom / presModel->cyChar;
-    double iPaintEnd = min(presModel->storage->amount, a);
-    int HorzBeg = max(0, presModel->iHscrollPos + ps->rcPaint.left / presModel->cxChar);
-    int rectLen = (ps->rcPaint.right - ps->rcPaint.left) / presModel->cxChar;
-    int i, x, y, strLength;
 
-    for(i = iPaintBeg; i < iPaintEnd; i++)
-    {
-        x = presModel->cxChar *(1 - presModel->iHscrollPos);
-        y = presModel->cyChar *(1 - presModel->iVscrollPos*presModel->VCoef + i);
-
-        strLength = (i < presModel->storage->amount - 1)?
-                  presModel->strPtr[i + 1] - presModel->strPtr[i]:
-                  presModel->storage->text + presModel->storage->len - presModel->strPtr[i];
-
-        TextOut(*hdc, x, y,
-                 presModel->strPtr[i],
-                 strLength);
-    }
-}
-*/
 void changeMode(PresentModel* presModel) {
     if (presModel->layoutMode) {
         presModel->layoutMode = 0;
@@ -116,15 +61,11 @@ void changeMode(PresentModel* presModel) {
 }
 
 void reconfigureText(PresentModel* presModel) {
-    if(presModel->strPtr != presModel->storage->strPtr) {
-        free(presModel->strPtr);
-    }
-
     int newAmount = 0;
     int strLen = 0;
     int i, j, xSize;
 
-    xSize = presModel->cxClient / presModel->cxChar;
+    xSize = presModel->cxClient / presModel->cxChar - 1;
     for (i = 1; i < presModel->storage->amount; i++) {
         strLen = (int)(presModel->storage->strPtr[i] - presModel->storage->strPtr[i - 1]);
         newAmount += strLen / xSize + 1;
@@ -133,20 +74,56 @@ void reconfigureText(PresentModel* presModel) {
     char** strings = (char**)calloc(newAmount, sizeof(char*));
 
     char* bufPtr = 0;
+    int delta;
+    int newLine = presModel->startLine;
     for (i = 1, j = 0; i < presModel->storage->amount; i++) {
         bufPtr = presModel->storage->strPtr[i - 1];
         strLen = (int)(presModel->storage->strPtr[i] - presModel->storage->strPtr[i - 1]);
         strings[j] = bufPtr;
+
+        if (presModel->cxClient - presModel->cxClientPrev > 0) {
+            delta = strings[j] - presModel->strPtr[presModel->startLine];
+            if (delta <= xSize && delta >= 0) {
+
+                        newLine = j;
+                        printf("new line %i\n", newLine);
+            }
+        }
+        else {
+            delta = presModel->strPtr[presModel->startLine] - strings[j];
+            if (delta <= xSize && delta >= 0) {
+
+                        newLine = j;
+                        printf("new line %i\n", newLine);
+            }
+        }
         j++;
         while(presModel->storage->strPtr[i] - bufPtr > xSize) {
             int inc = xSize;
             strLen -= inc;
             bufPtr += inc;
             strings[j] = bufPtr;
+            if (presModel->cxClient - presModel->cxClientPrev > 0) {
+                delta = strings[j] - presModel->strPtr[presModel->startLine];
+                if (delta <= xSize && delta >= 0) {
+                            newLine = j;
+                }
+            }
+            else {
+                delta = presModel->strPtr[presModel->startLine] - strings[j];
+                if (delta <= xSize && delta >= 0) {
+                            newLine = j;
+                }
+            }
             j++;
         }
     }
 
+    presModel->startLine = newLine;
+
+    if(presModel->strPtr != presModel->storage->strPtr) {
+        free(presModel->strPtr);
+    }
     presModel->amount = newAmount;
     presModel->strPtr = strings;
 }
