@@ -1,28 +1,81 @@
 #include <stdio.h>
+#include <limits.h>
 #include "PresentModel.h"
 #include "menu.h"
 
-void menuAction(HWND hwnd, WPARAM wParam, PresentModel* presModel) {
-    HMENU hMenu = GetMenu(hwnd);
+void InitOFN(OPENFILENAME * ofn, HWND * hwnd)
+{
+    ZeroMemory(ofn, sizeof(*ofn));
+    static CHAR szFilter[] = "Text Files(*.txt)\0*.txt\0All Files(*.*)\0*.*\0\0";
+    ofn->lStructSize = sizeof(*ofn);
+    ofn->hwndOwner = *hwnd;
+    ofn->lpstrFile = "\0";
+    ofn->nMaxFile = 100;
+    ofn->lpstrFilter = (LPCSTR)szFilter;
+    ofn->nFilterIndex = 1;
+    ofn->lpstrTitle = TEXT("Open");
+    ofn->Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+ }
+
+ static char file[10] = "text1.txt";
+
+int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
+    HMENU hMenu = GetMenu(*hwnd);
+    int newLPARAM  = (presModel->cyClient << 16) + presModel->cxClient;
     switch (LOWORD(wParam)) {
+        case IDM_OPEN: {
+            OPENFILENAME ofn;
+            char nameFile[100] = { 0 };
+            InitOFN(&ofn, hwnd);
+            ofn.lpstrFile = nameFile;
+            if (GetOpenFileName(&ofn)) {
+                FreeModel(presModel);
+                FILE *fp;
+                fp = fopen(ofn.lpstrFile, "rb");
+                if (fp == 0) {
+                    MessageBox(hwnd, TEXT("Cannot open file"), TEXT("Error"), MB_OK);
+                    return 1;
+                }
+                if (initPresentModel(0, presModel, 0, fp, presModel->mode) != 0) return 1;
+                fclose(fp);
+                SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
+                InvalidateRect(*hwnd, NULL, TRUE);
+            }
+            //free(&ofn);
+            break;
+        }
         case IDM_DEFAULT: {
-            printf("%i\n", presModel->layoutMode);
-            CheckMenuItem(hMenu, presModel->layoutMode, MF_UNCHECKED);
-            presModel->layoutMode = LOWORD(wParam);
-            CheckMenuItem(hMenu, presModel->layoutMode, MF_CHECKED);
+            CheckMenuItem(hMenu, presModel->mode, MF_UNCHECKED);
+            presModel->mode = LOWORD(wParam);
+            CheckMenuItem(hMenu, presModel->mode, MF_CHECKED);
 
-            AdjustView(Text, Text->maxLineLen * Text->letterWidth);
-            Text->alignment = 0;
+            char* startPtr = presModel->strPtr[presModel->startLine];
 
-            SendMessage(hwnd, WM_SIZE, 0, 0L);
+            free(presModel->strPtr);
+            presModel->strPtr = presModel->storage->strPtr;
+            presModel->amount = presModel->storage->amount;
 
-            InvalidateRect(hwnd, NULL, TRUE);
+            char* bufPtr = 0;
+            int minLen = INT_MAX;
+            int newLine = presModel->startLine;
+            for (int i = 0; i < presModel->amount; i++) {
+                bufPtr = presModel->strPtr[i];
+                if (abs(startPtr - bufPtr) < minLen) {
+                    minLen = abs(startPtr - bufPtr);
+                    presModel->startLine = i;
+                }
+            }
+            SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
+
+            InvalidateRect(*hwnd, NULL, TRUE);
             break;
         }
         case IDM_LAYOUT: {
-            CheckMenuItem(hMenu, presModel->layoutMode, MF_UNCHECKED);
-            presModel->layoutMode = LOWORD(wParam);
-            CheckMenuItem(hMenu, presModel->layoutMode, MF_CHECKED);
+            CheckMenuItem(hMenu, presModel->mode, MF_UNCHECKED);
+            presModel->mode = LOWORD(wParam);
+            CheckMenuItem(hMenu, presModel->mode, MF_CHECKED);
+            SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
+            InvalidateRect(*hwnd, NULL, TRUE);
             break;
         }
         case IDM_EXIT: {
@@ -31,4 +84,5 @@ void menuAction(HWND hwnd, WPARAM wParam, PresentModel* presModel) {
             break;
         }
     }
+    return 0;
 }

@@ -112,15 +112,18 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              if (!fp) {
                 MessageBox(hwnd, TEXT("Cannot open file"), TEXT("Error"), MB_OK);
                 PostQuitMessage (0);
-                return 0;
+                break;
              }
 
 
              hdc = GetDC(hwnd);
              SelectObject(hdc, GetStockObject(SYSTEM_FIXED_FONT));
 
-             initPresentModel(&hdc, &presModel, &lParam);
-             fillPresentModel(&presModel, fp);
+             if (initPresentModel(&hdc, &presModel, &lParam, fp, IDM_DEFAULT) != 0) {
+                MessageBox(hwnd, TEXT("Memory not allocated"), TEXT("Error"), MB_OK);
+                PostQuitMessage (0);
+                break;
+             }
 
              fclose(fp);
 
@@ -128,16 +131,19 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              return 0;
         }
         case WM_SIZE : {
-            presModel.cxClientPrev = presModel.cxClient;
             presModel.cxClient = LOWORD(lParam);
             presModel.cyClient = HIWORD(lParam);
 
-            if (presModel.layoutMode) {
-                reconfigureText(&presModel);
+            if (presModel.mode == IDM_LAYOUT && reconfigureText(&presModel) != 0) {
+                PostQuitMessage (0);
+                FreeModel(&presModel);
+                break;
             }
 
 
-            iVscrollMax = min(SHRT_MAX, presModel.amount - presModel.cyClient / presModel.cyChar);
+            int a = presModel.amount - presModel.cyClient / presModel.cyChar;
+            a = max(0, a);
+            iVscrollMax = min(SHRT_MAX, a);
 
             if (iVscrollMax != 0) {
                 presModel.VCoef = (double)(presModel.amount - presModel.cyClient / presModel.cyChar + 1)
@@ -152,7 +158,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             SetScrollRange(hwnd, SB_VERT, 0, iVscrollMax, FALSE);
             SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
 
-            if (!presModel.layoutMode) {
+            if (presModel.mode == IDM_DEFAULT) {
                 iHscrollMax = min(SHRT_MAX,
                                   presModel.storage->maxStrLen
                                   - presModel.cxClient / presModel.cxChar);
@@ -276,6 +282,12 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             case VK_NEXT:
                 iVscrollInc = max(1, presModel.cyClient / presModel.cyChar);
                 break;
+            case VK_END:
+                iVscrollInc = iVscrollMax;
+                break;
+            case VK_HOME:
+                iVscrollInc = -presModel.iVscrollPos;
+                break;
             case VK_LEFT:
                 iHscrollInc = -1;
                 break;
@@ -312,11 +324,16 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                 SetScrollPos(hwnd, SB_HORZ, presModel.iHscrollPos, TRUE);
                 UpdateWindow(hwnd);
             }
+
+            return 0;
         }
         case WM_COMMAND:
-            hMenu = GetMenu(hwnd);
-            menuAction(hwnd, wParam, &presModel);
-            break;
+            if (menuAction(&hwnd, wParam, &presModel) != 0) {
+                PostQuitMessage (0);
+                FreeModel(&presModel);
+                break;
+            }
+            return 0;
         default:                      /* for messages that we don't deal with */
             return DefWindowProc (hwnd, message, wParam, lParam);
     }

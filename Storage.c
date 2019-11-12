@@ -1,6 +1,6 @@
 #include "Storage.h"
 
-void fillStorage(Storage* storage, FILE* fp) {
+int fillStorage(Storage* storage, FILE* fp) {
     storage->amount = 0;
     storage->len = 0;
 
@@ -12,14 +12,13 @@ void fillStorage(Storage* storage, FILE* fp) {
     storage->text = (char*) calloc(storage->len, sizeof(char)+1);
 
     if (!storage->text) {
-        printf("Memory is not allocate");
-        return;
+        return 1;
     }
 
     fseek(fp,0,SEEK_SET);
 
     if (fread(storage->text, sizeof(char), storage->len, fp) != storage->len) {
-        printf("fread != len");
+        return 1;
     }
 
     for (int  i = 0; i < storage->len; i++) {
@@ -28,7 +27,9 @@ void fillStorage(Storage* storage, FILE* fp) {
 
     storage->strPtr = (char**) calloc(storage->amount, sizeof(char*));
 
-    //printf("Memory was allocated\n");
+    if (!storage->strPtr) {
+        return 1;
+    }
 
     char** bufPtr = storage->strPtr;
     *bufPtr = storage->text;
@@ -36,12 +37,15 @@ void fillStorage(Storage* storage, FILE* fp) {
     for (int  i = 0; i < storage->len; i++) {
         if (storage->text[i] == '\n') {
             *bufPtr = storage->text + i + 1;
-            //printf(*bufPtr);
             bufPtr++;
         }
     }
 
     storage->maxStrLen = maxStrLen(storage);
+
+    printf("%i\n", storage->amount);
+
+    return 0;
     //printf(storage->text + storage->len - 100);
     //printf("\n");
 }

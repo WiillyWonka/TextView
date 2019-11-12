@@ -9,4 +9,8 @@
 
 HWND hwndDialog;
 
-void menuAction(HWND hwnd, WPARAM wParam, PresentModel* presModel);
+//action for menu buttons
+//in: HWND*, WPARAM
+//in/out: PresentModel*
+//out: int success code
+int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel);
