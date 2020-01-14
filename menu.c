@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <limits.h>
+#include <tchar.h>
+#include <windows.h>
 #include "PresentModel.h"
 #include "menu.h"
 
@@ -17,18 +19,16 @@ void InitOFN(OPENFILENAME * ofn, HWND * hwnd)
     ofn->Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
  }
 
- static char file[10] = "text1.txt";
-
 int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
     HMENU hMenu = GetMenu(*hwnd);
     int newLPARAM  = (presModel->cyClient << 16) + presModel->cxClient;
     switch (LOWORD(wParam)) {
         case IDM_OPEN: {
             OPENFILENAME ofn;
-            char nameFile[100] = { 0 };
+            char nameFile[300] = { 0 };
             InitOFN(&ofn, hwnd);
             ofn.lpstrFile = nameFile;
-            if (GetOpenFileName(&ofn)) {
+            if (GetOpenFileName((LPOPENFILENAME)&ofn)) {
                 FreeModel(presModel);
                 FILE *fp;
                 fp = fopen(ofn.lpstrFile, "rb");
@@ -36,12 +36,12 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
                     MessageBox(hwnd, TEXT("Cannot open file"), TEXT("Error"), MB_OK);
                     return 1;
                 }
+                presModel->isOpen = 1;
                 if (initPresentModel(0, presModel, 0, fp, presModel->mode) != 0) return 1;
                 fclose(fp);
                 SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
                 InvalidateRect(*hwnd, NULL, TRUE);
             }
-            //free(&ofn);
             break;
         }
         case IDM_DEFAULT: {

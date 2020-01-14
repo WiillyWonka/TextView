@@ -17,7 +17,8 @@ typedef struct PresentModel {
     iVscrollPos, iHscrollPos, startLine;
     double VCoef, HCoef;
     char** strPtr;
-    int mode;
+    int mode, isOpen;
+    int caretLine, caretLetter;
 } PresentModel;
 
 //Initiate PresentModel
@@ -37,3 +38,18 @@ void FreeModel(PresentModel* presModel);
 //inout: PresentModel*
 //out: success code
 int reconfigureText(PresentModel* presModel);
+
+/*Движение каретки
+in: HandleWindow
+inout: Presenr Model
+*/
+void moveCaretUp(PresentModel*, HWND);
+void moveCaretDown(PresentModel*, HWND);
+void moveCaretLeft(PresentModel*, HWND);
+void moveCaretRight(PresentModel*, HWND);
+
+/*Перемещение рабочей области к положению каретки
+in: HandleWindow
+inout: Presenr Model
+*/
+void moveToCaret(PresentModel*, HWND);

@@ -87,6 +87,7 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
 LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static PresentModel presModel;
+    static int isOpen;
     static int iHscrollMax, iVscrollMax;
     HMENU hMenu;
     int i, x, y, iVscrollInc, iHscrollInc;
@@ -111,10 +112,9 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              FILE* fp = fopen(file,"rb");
              if (!fp) {
                 MessageBox(hwnd, TEXT("Cannot open file"), TEXT("Error"), MB_OK);
-                PostQuitMessage (0);
-                break;
+                presModel.isOpen = 0;
              }
-
+             else presModel.isOpen = 1;
 
              hdc = GetDC(hwnd);
              SelectObject(hdc, GetStockObject(SYSTEM_FIXED_FONT));
@@ -125,9 +125,12 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                 break;
              }
 
-             fclose(fp);
+             if (isOpen) fclose(fp);
 
              ReleaseDC(hwnd, hdc);
+             CreateCaret(hwnd, (HBITMAP)0, 2, 16);
+             SetCaretPos(presModel.cxChar, presModel.cyChar);
+             ShowCaret(hwnd);
              return 0;
         }
         case WM_SIZE : {
@@ -184,36 +187,59 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         }
 
         case WM_VSCROLL : {
+            int prevPos = presModel.iVscrollPos;
             switch(LOWORD(wParam)) {
                 case SB_LINEUP :
-                    iVscrollInc = -1;
-                    break;
+                    presModel.startLine--;
+                    if (presModel.startLine < 0) presModel.startLine = 0;
+                    else {
+						presModel.iVscrollPos = presModel.startLine / presModel.VCoef;
+						ScrollWindow(hwnd, 0, presModel.cyChar, NULL, NULL);
+						SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
+						UpdateWindow(hwnd);
+                    }
+                    return 0;
                 case SB_LINEDOWN :
-                    iVscrollInc = 1;
-                    break;
+                    presModel.startLine++;
+                    if (presModel.startLine > presModel.amount - presModel.cyClient / presModel.cyChar + 1)
+						presModel.startLine = presModel.amount - presModel.cyClient / presModel.cyChar + 1;
+                    else {
+						presModel.iVscrollPos = presModel.startLine / presModel.VCoef;
+						iVscrollInc = presModel.iVscrollPos - prevPos;
+						ScrollWindow(hwnd, 0, -presModel.cyChar, NULL, NULL);
+						SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
+						UpdateWindow(hwnd);
+                    }
+                    return 0;
                 case SB_PAGEUP :
-                    iVscrollInc = min(-1, - (int)(presModel.cyClient / (int)presModel.cyChar));
+                    presModel.iVscrollPos += min(-1, - (int)(presModel.cyClient / (int)presModel.cyChar));
                     break;
                 case SB_PAGEDOWN :
-                    iVscrollInc = max(1, presModel.cyClient / presModel.cyChar);
+                    presModel.iVscrollPos += max(1, presModel.cyClient / presModel.cyChar);
                     break;
                 case SB_THUMBTRACK :
-                    iVscrollInc = HIWORD(wParam)- presModel.iVscrollPos;
+                    presModel.iVscrollPos = HIWORD(wParam);
                     break;
+				case SB_TOP:
+					presModel.iVscrollPos = 0;
+					break;
+				case SB_BOTTOM:
+					presModel.iVscrollPos = iVscrollMax;
+					break;
                 default:
                     iVscrollInc = 0;
             }
 
-            if (iVscrollInc + presModel.iVscrollPos >= iVscrollMax) {
-                iVscrollInc = iVscrollMax - presModel.iVscrollPos;
+            if (presModel.iVscrollPos > iVscrollMax) {
+                presModel.iVscrollPos = iVscrollMax;
             }
-            if (iVscrollInc + presModel.iVscrollPos <= 0) {
-                iVscrollInc = -(int)(presModel.iVscrollPos);
+            if (presModel.iVscrollPos < 0) {
+                presModel.iVscrollPos = 0;
             }
 
+			iVscrollInc = presModel.iVscrollPos - prevPos;
             if (iVscrollInc != 0) {
-                presModel.iVscrollPos += iVscrollInc;
-                presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos;
+                presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos + 1;
                 ScrollWindow(hwnd, 0, -presModel.VCoef*presModel.cyChar*iVscrollInc, NULL, NULL);
                 SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
                 UpdateWindow(hwnd);
@@ -271,58 +297,29 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             switch (wParam)
             {
             case VK_UP:
-                iVscrollInc = -1;
+                moveCaretUp(&presModel, hwnd);
                 break;
             case VK_DOWN:
-                iVscrollInc = 1;
-                break;
-            case VK_PRIOR:
-                iVscrollInc = min(-1, - (int)(presModel.cyClient / (int)presModel.cyChar));
-                break;
-            case VK_NEXT:
-                iVscrollInc = max(1, presModel.cyClient / presModel.cyChar);
-                break;
-            case VK_END:
-                iVscrollInc = iVscrollMax;
-                break;
-            case VK_HOME:
-                iVscrollInc = -presModel.iVscrollPos;
+                moveCaretDown(&presModel, hwnd);
                 break;
             case VK_LEFT:
-                iHscrollInc = -1;
+                moveCaretLeft(&presModel, hwnd);
                 break;
             case VK_RIGHT:
-                iHscrollInc = 1;
+                moveCaretRight(&presModel, hwnd);
                 break;
-            }
-
-            if (iVscrollInc + presModel.iVscrollPos >= iVscrollMax) {
-                iVscrollInc = iVscrollMax - presModel.iVscrollPos;
-            }
-            if (iVscrollInc + presModel.iVscrollPos <= 0) {
-                iVscrollInc = -(int)(presModel.iVscrollPos);
-            }
-
-            if (iVscrollInc != 0) {
-                presModel.iVscrollPos += iVscrollInc;
-                presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos;
-                ScrollWindow(hwnd, 0, -presModel.VCoef*presModel.cyChar*iVscrollInc, NULL, NULL);
-                SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
-                UpdateWindow(hwnd);
-            }
-
-            if (iHscrollInc + presModel.iHscrollPos >= iHscrollMax) {
-                iHscrollInc = iHscrollMax - presModel.iHscrollPos;
-            }
-            if (iHscrollInc + presModel.iHscrollPos <= 0) {
-                iHscrollInc = -presModel.iHscrollPos;
-            }
-            //printf("%d", iHscrollInc);
-            if (iHscrollInc != 0) {
-                presModel.iHscrollPos += iHscrollInc;
-                ScrollWindow(hwnd, -(presModel.HCoef*presModel.cxChar*iHscrollInc), 0, NULL, NULL);
-                SetScrollPos(hwnd, SB_HORZ, presModel.iHscrollPos, TRUE);
-                UpdateWindow(hwnd);
+            case VK_HOME:
+                SendMessage(hwnd, WM_VSCROLL, SB_TOP, 0L);
+                break;
+            case VK_END:
+                SendMessage(hwnd, WM_VSCROLL, SB_BOTTOM, 0L);
+                break;
+            case VK_PRIOR:
+                SendMessage(hwnd, WM_VSCROLL, SB_PAGEUP, 0L);
+                break;
+            case VK_NEXT:
+                SendMessage(hwnd, WM_VSCROLL, SB_PAGEDOWN, 0L);
+                break;
             }
 
             return 0;
@@ -334,6 +331,18 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                 break;
             }
             return 0;
+
+        case WM_SETFOCUS:
+            CreateCaret(hwnd, (HBITMAP)0, 2, 16);
+            SetCaretPos((presModel.caretLetter + presModel.iHscrollPos)*presModel.cxChar,
+                 (presModel.caretLine - presModel.startLine)* presModel.cyChar);
+            ShowCaret(hwnd);
+            break;
+
+        case WM_KILLFOCUS:
+            HideCaret(hwnd);
+            DestroyCaret();
+            break;
         default:                      /* for messages that we don't deal with */
             return DefWindowProc (hwnd, message, wParam, lParam);
     }
