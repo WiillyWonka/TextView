@@ -88,7 +88,6 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 {
     static PresentModel presModel;
     static int isOpen;
-    static int iHscrollMax, iVscrollMax;
     HMENU hMenu;
     int i, x, y, iVscrollInc, iHscrollInc;
     HDC hdc;
@@ -128,7 +127,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
              if (isOpen) fclose(fp);
 
              ReleaseDC(hwnd, hdc);
-             CreateCaret(hwnd, (HBITMAP)0, 2, 16);
+             CreateCaret(hwnd, (HBITMAP)0, presModel.cxChar, presModel.cyChar);
              SetCaretPos(presModel.cxChar, presModel.cyChar);
              ShowCaret(hwnd);
              return 0;
@@ -136,46 +135,47 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         case WM_SIZE : {
             presModel.cxClient = LOWORD(lParam);
             presModel.cyClient = HIWORD(lParam);
-
             if (presModel.mode == IDM_LAYOUT && reconfigureText(&presModel) != 0) {
                 PostQuitMessage (0);
                 FreeModel(&presModel);
                 break;
             }
 
+            findCaretIndex(&presModel);
+            findCaretPosition(&presModel);
 
             int a = presModel.amount - presModel.cyClient / presModel.cyChar;
             a = max(0, a);
-            iVscrollMax = min(SHRT_MAX, a);
+            presModel.iVscrollMax = min(SHRT_MAX, a);
 
-            if (iVscrollMax != 0) {
+            if (presModel.iVscrollMax != 0) {
                 presModel.VCoef = (double)(presModel.amount - presModel.cyClient / presModel.cyChar + 1)
-                                   /iVscrollMax;
+                                   /presModel.iVscrollMax;
             }
             else {
                 presModel.VCoef = 1;
             }
 
             presModel.iVscrollPos = (double)presModel.startLine / presModel.VCoef;
-            presModel.iVscrollPos = min(presModel.iVscrollPos, iVscrollMax);
-            SetScrollRange(hwnd, SB_VERT, 0, iVscrollMax, FALSE);
+            presModel.iVscrollPos = min(presModel.iVscrollPos, presModel.iVscrollMax);
+            SetScrollRange(hwnd, SB_VERT, 0, presModel.iVscrollMax, FALSE);
             SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
 
             if (presModel.mode == IDM_DEFAULT) {
-                iHscrollMax = min(SHRT_MAX,
+                presModel.iHscrollMax = min(SHRT_MAX,
                                   presModel.storage->maxStrLen
                                   - presModel.cxClient / presModel.cxChar);
-                iHscrollMax = max(iHscrollMax, 0);
-                if (iHscrollMax != 0) {
+                presModel.iHscrollMax = max(presModel.iHscrollMax, 0);
+                if (presModel.iHscrollMax != 0) {
                     presModel.HCoef = (double)(presModel.storage->maxStrLen
-                                   - presModel.cxClient / presModel.cxChar) / iHscrollMax;
+                                   - presModel.cxClient / presModel.cxChar) / presModel.iHscrollMax;
                 }
                 else {
                     presModel.HCoef = 1;
                 }
 
-                presModel.iHscrollPos = min(presModel.iHscrollPos, iHscrollMax);
-                SetScrollRange(hwnd, SB_HORZ, 0, iHscrollMax, FALSE);
+                presModel.iHscrollPos = min(presModel.iHscrollPos, presModel.iHscrollMax);
+                SetScrollRange(hwnd, SB_HORZ, 0, presModel.iHscrollMax, FALSE);
                 SetScrollPos(hwnd, SB_HORZ, presModel.iHscrollPos, TRUE);
             }
             else {
@@ -201,8 +201,8 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                     return 0;
                 case SB_LINEDOWN :
                     presModel.startLine++;
-                    if (presModel.startLine > presModel.amount - presModel.cyClient / presModel.cyChar + 1)
-						presModel.startLine = presModel.amount - presModel.cyClient / presModel.cyChar + 1;
+                    if (presModel.startLine > presModel.amount - presModel.cyClient / presModel.cyChar + 2)
+						presModel.startLine = presModel.amount - presModel.cyClient / presModel.cyChar + 2;
                     else {
 						presModel.iVscrollPos = presModel.startLine / presModel.VCoef;
 						iVscrollInc = presModel.iVscrollPos - prevPos;
@@ -224,14 +224,14 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 					presModel.iVscrollPos = 0;
 					break;
 				case SB_BOTTOM:
-					presModel.iVscrollPos = iVscrollMax;
+					presModel.iVscrollPos = presModel.iVscrollMax;
 					break;
                 default:
                     iVscrollInc = 0;
             }
 
-            if (presModel.iVscrollPos > iVscrollMax) {
-                presModel.iVscrollPos = iVscrollMax;
+            if (presModel.iVscrollPos > presModel.iVscrollMax) {
+                presModel.iVscrollPos = presModel.iVscrollMax;
             }
             if (presModel.iVscrollPos < 0) {
                 presModel.iVscrollPos = 0;
@@ -239,8 +239,9 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
 			iVscrollInc = presModel.iVscrollPos - prevPos;
             if (iVscrollInc != 0) {
+                int prevStartLine = presModel.startLine;
                 presModel.startLine = presModel.VCoef * (double)presModel.iVscrollPos + 1;
-                ScrollWindow(hwnd, 0, -presModel.VCoef*presModel.cyChar*iVscrollInc, NULL, NULL);
+                ScrollWindow(hwnd, 0, -(int)(presModel.startLine - prevStartLine)*presModel.cyChar, NULL, NULL);
                 SetScrollPos(hwnd, SB_VERT, presModel.iVscrollPos, TRUE);
                 UpdateWindow(hwnd);
             }
@@ -269,16 +270,15 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                     iHscrollInc = 0;
             }
 
-            if (iHscrollInc + presModel.iHscrollPos >= iHscrollMax) {
-                iHscrollInc = iHscrollMax - presModel.iHscrollPos;
+            if (iHscrollInc + presModel.iHscrollPos >= presModel.iHscrollMax) {
+                iHscrollInc = presModel.iHscrollMax - presModel.iHscrollPos;
             }
             if (iHscrollInc + presModel.iHscrollPos <= 0) {
                 iHscrollInc = -presModel.iHscrollPos;
             }
-            //printf("%d", iHscrollInc);
             if (iHscrollInc != 0) {
                 presModel.iHscrollPos += iHscrollInc;
-                ScrollWindow(hwnd, -(presModel.HCoef*presModel.cxChar*iHscrollInc), 0, NULL, NULL);
+                ScrollWindow(hwnd, -(int)(presModel.HCoef*presModel.cxChar*iHscrollInc), 0, NULL, NULL);
                 SetScrollPos(hwnd, SB_HORZ, presModel.iHscrollPos, TRUE);
                 UpdateWindow(hwnd);
             }
@@ -297,10 +297,10 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             switch (wParam)
             {
             case VK_UP:
-                moveCaretUp(&presModel, hwnd);
+                moveCaretUp(&presModel, hwnd, 0);
                 break;
             case VK_DOWN:
-                moveCaretDown(&presModel, hwnd);
+                moveCaretDown(&presModel, hwnd, 0);
                 break;
             case VK_LEFT:
                 moveCaretLeft(&presModel, hwnd);
@@ -333,7 +333,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             return 0;
 
         case WM_SETFOCUS:
-            CreateCaret(hwnd, (HBITMAP)0, 2, 16);
+            CreateCaret(hwnd, (HBITMAP)0, presModel.cxChar, presModel.cyChar);
             SetCaretPos((presModel.caretLetter + presModel.iHscrollPos)*presModel.cxChar,
                  (presModel.caretLine - presModel.startLine)* presModel.cyChar);
             ShowCaret(hwnd);

@@ -9,7 +9,7 @@ int fillStorage(Storage* storage, FILE* fp) {
 
 	if (storage->len == 0) {
 		storage->text = (char*)calloc(1, sizeof(char));
-		storage->text[0] = "\0";
+		storage->text[0] = '\0';
 		storage->strPtr = (char**)calloc(1, sizeof(char*));
 		storage->strPtr[0] = storage->text;
 		storage->amount = 1;
@@ -21,7 +21,7 @@ int fillStorage(Storage* storage, FILE* fp) {
 
 		//printf("%i\n", storage->len);
 
-		storage->text = (char*)calloc(storage->len, sizeof(char) + 1);
+		storage->text = (char*)calloc(storage->len + 1, sizeof(char) + 1);
 
 		if (!storage->text) {
 			return 1;
@@ -32,12 +32,16 @@ int fillStorage(Storage* storage, FILE* fp) {
 		if (fread(storage->text, sizeof(char), storage->len, fp) != storage->len) {
 			return 1;
 		}
+
+		storage->text[storage->len] = '\0';
 	}
 
-    for (int  i = 0; i < storage->len; i++) {
-        if (storage->text[i] == '\n') storage->amount++;
+    for (int  i = 0; i <= storage->len; i++) {
+        if (storage->text[i] == '\n' || storage->text[i] == '\0') {
+            if (storage->text[i] == '\0' && storage->text[i - 1] == '\n') break;
+            storage->amount++;
+        }
     }
-    if (storage->text[storage->len - 1] != '\n') storage->amount++;
 
     storage->strPtr = (char**) calloc(storage->amount + 1, sizeof(char*));
 
@@ -47,15 +51,15 @@ int fillStorage(Storage* storage, FILE* fp) {
 
     char* bufPtr = storage->text;
     int j = 0;
-    for (int  i = 0; j < storage->amount, i < storage->len; i++) {
-        if (storage->text[i] == '\n') {
+    for (int  i = 0; j < storage->amount && i <= storage->len; i++) {
+        if (storage->text[i] == '\n' || storage->text[i] == '\0') {
+            if (storage->text[i] == '\0' && storage->text[i - 1] == '\n') break;
             storage->strPtr[j] = bufPtr;
-            if (i == storage->len - 1) break;
+            if (i == storage->len) break;
             bufPtr = storage->text + i + 1;
             j++;
         }
     }
-    if (storage->text[storage->len - 1] != '\n') storage->strPtr[j] = bufPtr;
 
     storage->maxStrLen = maxStrLen(storage);
 
@@ -70,6 +74,10 @@ int maxStrLen(Storage* storage) {
         //printf("%d", len);
         if (len > max) max = len;
     }
+
+    len = (int)(storage->text + storage->len - storage->strPtr[storage->amount - 1]);
+    if (len > max) max = len;
+
     //printf("%i", );
     return max - 1;
 }

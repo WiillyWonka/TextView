@@ -46,7 +46,7 @@ int initPresentModel(HDC* hdc, PresentModel* presModel, LPARAM* lParam,
 		}
     } else {
         presModel->storage->text = (char*) calloc(1, sizeof(char));
-        presModel->storage->text[0] = "\0";
+        presModel->storage->text[0] = '\0';
         presModel->storage->strPtr = (char**) calloc(1, sizeof(char*));
         presModel->storage->strPtr[0] = presModel->storage->text;
         presModel->storage->amount = 1;
@@ -58,6 +58,7 @@ int initPresentModel(HDC* hdc, PresentModel* presModel, LPARAM* lParam,
 
     presModel->caretLetter = 1;
     presModel->caretLine = 1;
+    presModel->action = 1;
 	SetCaretPos(presModel->cxChar, presModel->cyChar);
     return 0;
 }
@@ -91,7 +92,9 @@ int reconfigureText(PresentModel* presModel) {
     int strLen = 0;
     int i, j, xSize;
 
-    xSize = presModel->cxClient / presModel->cxChar;
+    findCaretIndex(presModel);
+
+    xSize = presModel->cxClient / presModel->cxChar - 1;
     if (xSize == 0) {
         return 1;
     }
@@ -122,9 +125,7 @@ int reconfigureText(PresentModel* presModel) {
         strings[j] = bufPtr;
         j++;
         while(presModel->storage->strPtr[i] - bufPtr > xSize) {
-            int inc = xSize;
-            strLen -= inc;
-            bufPtr += inc;
+            bufPtr += xSize;
             strings[j] = bufPtr;
             j++;
         }
@@ -149,7 +150,56 @@ int reconfigureText(PresentModel* presModel) {
     presModel->amount = j;
     presModel->strPtr = strings;
 
+    findCaretPosition(presModel);
+
     return 0;
+}
+
+void findCaretIndex(PresentModel* presModel) {
+    presModel->caretIdx = 0;
+    if (presModel->isOpen) {
+        for (int k = 0; k < presModel->caretLine - 1; k++) {
+            int strLength = (k < presModel->amount - 1)?
+                  presModel->strPtr[k + 1] - presModel->strPtr[k]:
+                  presModel->storage->text + presModel->storage->len - presModel->strPtr[k];
+            presModel->caretIdx += strLength;
+        }
+        presModel->caretIdx += presModel->caretLetter - 1;
+        //printf("caretIdx = %i\n", caretIdx);
+    }
+}
+
+void findCaretPosition(PresentModel* presModel) {
+    if (presModel->isOpen && presModel->action != 0) {
+        for (int i = 1; i < presModel->amount; i++) {
+            int lineStartIdx = presModel->strPtr[i - 1] - presModel->storage->text;
+            int lineEndIdx = presModel->strPtr[i] - presModel->storage->text;
+            if (presModel->caretIdx >= lineStartIdx && presModel->caretIdx <= lineEndIdx) {
+                presModel->caretLine = i;
+                presModel->caretLetter = presModel->caretIdx - lineStartIdx + 1;
+                /*printf("lineStartIdx = %i\n", lineStartIdx);
+                printf("lineEndIdx = %i\n", lineEndIdx);
+                printf("Line = %i\n", presModel->caretLine);
+                printf("Letter = %i\n", presModel->caretLetter);*/
+            }
+        }
+
+
+        int lineStartIdx = presModel->strPtr[presModel->amount - 1] - presModel->storage->text;
+        int lineEndIdx = presModel->storage->len - 1;
+        if (presModel->caretIdx >= lineStartIdx && presModel->caretIdx <= lineEndIdx) {
+            presModel->caretLine = presModel->amount;
+            presModel->caretLetter = presModel->caretIdx - lineStartIdx + 1;
+            /*printf("lineStartIdx = %i\n", lineStartIdx);
+            printf("lineEndIdx = %i\n", lineEndIdx);
+            printf("Line = %i\n", presModel->caretLine);
+            printf("Letter = %i\n", presModel->caretLetter);*/
+        }
+
+        SetCaretPos((presModel->caretLetter - presModel->iHscrollPos)*presModel->cxChar,
+                     (presModel->caretLine - presModel->startLine)*presModel->cyChar);
+    }
+    presModel->action = 1;
 }
 
 void FreeModel(PresentModel* presModel) {
@@ -172,7 +222,8 @@ void FreeModel(PresentModel* presModel) {
     }
 }
 
-void moveCaretUp(PresentModel* presModel, HWND hwnd) {
+void moveCaretUp(PresentModel* presModel, HWND hwnd, int lineBreak) {
+    if (!presModel->isOpen) return;
     presModel->caretLine--;
 
     if (presModel->caretLine < 1) {
@@ -184,7 +235,9 @@ void moveCaretUp(PresentModel* presModel, HWND hwnd) {
     }
 
     int curLineSize = presModel->strPtr[presModel->caretLine] - presModel->strPtr[presModel->caretLine - 1];
-    if (presModel->caretLetter > curLineSize || presModel->caretLetter < 0) presModel->caretLetter = curLineSize;
+    if (presModel->caretLetter > curLineSize || presModel->caretLetter < 1 || lineBreak) {
+        presModel->caretLetter = curLineSize;
+    }
 
     SetCaretPos((presModel->caretLetter - presModel->iHscrollPos)*presModel->cxChar,
                  (presModel->caretLine - presModel->startLine)*presModel->cyChar);
@@ -192,19 +245,24 @@ void moveCaretUp(PresentModel* presModel, HWND hwnd) {
     moveToCaret(presModel, hwnd);
 }
 
-void moveCaretDown(PresentModel* presModel, HWND hwnd) {
+void moveCaretDown(PresentModel* presModel, HWND hwnd, int lineBreak) {
+    int eof = 0;
+    if (!presModel->isOpen) return;
     presModel->caretLine++;
 
-    if (presModel->caretLine > presModel->amount) presModel->caretLine = presModel->amount;
+    if (presModel->caretLine > presModel->amount) {
+        presModel->caretLine = presModel->amount;
+        eof = 1;
+    }
     else if (presModel->caretLine > presModel->startLine + presModel->cyClient / presModel->cyChar - 1) {
         SendMessage(hwnd, WM_VSCROLL, SB_LINEDOWN, 0L);
     }
 
 	int curLineSize = presModel->caretLine == presModel->amount ?
-		presModel->strPtr[presModel->amount - 1] - presModel->strPtr[presModel->caretLine - 1] :
+		presModel->storage->text + presModel->storage->len - presModel->strPtr[presModel->caretLine - 1] :
 		presModel->strPtr[presModel->caretLine] - presModel->strPtr[presModel->caretLine - 1];
 	if (presModel->caretLetter > curLineSize) presModel->caretLetter = curLineSize;
-	if (presModel->caretLetter < 1) presModel->caretLetter = 1;
+	if ((presModel->caretLetter < 1 || lineBreak) && !eof) presModel->caretLetter = 1;
 
     moveToCaret(presModel, hwnd);
     SetCaretPos((presModel->caretLetter - presModel->iHscrollPos)*presModel->cxChar,
@@ -212,7 +270,15 @@ void moveCaretDown(PresentModel* presModel, HWND hwnd) {
 }
 
 void moveCaretLeft(PresentModel* presModel, HWND hwnd) {
-    if (presModel->caretLetter <= 1) moveCaretUp(presModel, hwnd);
+    if (!presModel->isOpen) return;
+    int curLineSize = 0;
+	curLineSize = (presModel->caretLine == presModel->amount ?
+		(presModel->storage->text + presModel->storage->len - 1) - presModel->strPtr[presModel->caretLine - 1] :
+		presModel->strPtr[presModel->caretLine] - presModel->strPtr[presModel->caretLine - 1]);
+
+    if (presModel->mode == IDM_LAYOUT && presModel->caretLetter > presModel->cxClient / presModel->cxChar)
+        presModel->caretLetter = presModel->cxClient / presModel->cxChar + 1;
+    if (presModel->caretLetter <= 1) moveCaretUp(presModel, hwnd, 1);
     else  {
         presModel->caretLetter--;
 		if (presModel->caretLetter < presModel->iHscrollPos * presModel->HCoef) {
@@ -222,22 +288,27 @@ void moveCaretLeft(PresentModel* presModel, HWND hwnd) {
         SetCaretPos((presModel->caretLetter - presModel->iHscrollPos)*presModel->cxChar,
                  (presModel->caretLine - presModel->startLine)* presModel->cyChar);
     }
+    /*printf("curLineSize = %i\n", curLineSize);
+    printf("presModel->caretLetter = %i\n", presModel->caretLetter);*/
+
 }
 
 void moveCaretRight(PresentModel* presModel, HWND hwnd) {
+    if (!presModel->isOpen) return;
 	int curLineSize = 0;
 	curLineSize = (presModel->caretLine == presModel->amount ?
-		(presModel->storage->text + presModel->storage->len - 1) - presModel->strPtr[presModel->caretLine - 1] :
+		(presModel->storage->text + presModel->storage->len) - presModel->strPtr[presModel->caretLine - 1] :
 		presModel->strPtr[presModel->caretLine] - presModel->strPtr[presModel->caretLine - 1]);
 
-    if (presModel->caretLetter > curLineSize) {
-		presModel->caretLetter = 1;
-        moveCaretDown(presModel, hwnd);
+    if (presModel->mode == IDM_LAYOUT) curLineSize = min(presModel->cxClient / presModel->cxChar, curLineSize);
+    if (presModel->caretLetter > curLineSize - 1) {
+        moveCaretDown(presModel, hwnd, 1);
     }
     else  {
         presModel->caretLetter++;
 		if (presModel->caretLetter >
-			presModel->iHscrollPos * presModel->HCoef + presModel->cxClient / presModel->cxChar)
+			presModel->iHscrollPos * presModel->HCoef + presModel->cxClient / presModel->cxChar - 1 &&
+            presModel->mode == IDM_DEFAULT)
 		{
 			SendMessage(hwnd, WM_HSCROLL, SB_LINEDOWN, 0L);
 		}
@@ -250,17 +321,21 @@ void moveCaretRight(PresentModel* presModel, HWND hwnd) {
 void moveToCaret(PresentModel* presModel, HWND hwnd) {
     int firstSimb = presModel->iHscrollPos * presModel->HCoef;
     if (presModel->caretLine < presModel->startLine ||
-        presModel->caretLine >= presModel->startLine + presModel->cyClient / presModel->cyChar ||
+        presModel->caretLine >= presModel->startLine + presModel->cyClient / presModel->cyChar + 1 ||
         presModel->caretLetter < firstSimb ||
-        presModel->caretLetter > firstSimb + presModel->cxClient / presModel->cxChar + 1)
+        (presModel->caretLetter > firstSimb + presModel->cxClient / presModel->cxChar + 1) &&
+        presModel->mode == IDM_DEFAULT)
     {
-        presModel->startLine = presModel->caretLine - 1;
-        presModel->iVscrollPos = presModel->startLine / presModel->VCoef;
-        presModel->iHscrollPos = (presModel->caretLetter - 1) / presModel->HCoef;
+        presModel->iVscrollPos = (presModel->caretLine - 1) / presModel->VCoef;
+        presModel->iVscrollPos = min(presModel->iVscrollPos, presModel->iVscrollMax);
+        presModel->iHscrollPos = (presModel->caretLetter) / presModel->HCoef;
+        presModel->iHscrollPos = min(presModel->iHscrollPos, presModel->iHscrollMax);
         SetScrollPos(hwnd, SB_VERT, presModel->iVscrollPos, TRUE);
         SetScrollPos(hwnd, SB_HORZ, presModel->iHscrollPos, TRUE);
+        presModel->startLine = presModel->iVscrollPos * presModel->VCoef;
+        presModel->action = 0; //Костыль для корректной работы движения ползунка за буквой
 		int newLPARAM = (presModel->cyClient << 16) + presModel->cxClient;
+		InvalidateRect(hwnd, NULL, TRUE);
 		SendMessage(hwnd, WM_SIZE, 0, newLPARAM);
-        InvalidateRect(hwnd, NULL, TRUE);
     }
 }

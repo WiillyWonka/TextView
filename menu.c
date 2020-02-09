@@ -25,7 +25,7 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
     switch (LOWORD(wParam)) {
         case IDM_OPEN: {
             OPENFILENAME ofn;
-            char nameFile[300] = { 0 };
+            char nameFile[1000] = { 0 };
             InitOFN(&ofn, hwnd);
             ofn.lpstrFile = nameFile;
             if (GetOpenFileName((LPOPENFILENAME)&ofn)) {
@@ -45,9 +45,12 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
             break;
         }
         case IDM_DEFAULT: {
+            if (presModel->mode == IDM_DEFAULT) break;
             CheckMenuItem(hMenu, presModel->mode, MF_UNCHECKED);
             presModel->mode = LOWORD(wParam);
             CheckMenuItem(hMenu, presModel->mode, MF_CHECKED);
+
+            findCaretIndex(presModel);
 
             char* startPtr = presModel->strPtr[presModel->startLine];
 
@@ -65,12 +68,14 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
                     presModel->startLine = i;
                 }
             }
+            findCaretPosition(presModel);
             SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
 
             InvalidateRect(*hwnd, NULL, TRUE);
             break;
         }
         case IDM_LAYOUT: {
+            if (presModel->mode == IDM_LAYOUT) break;
             CheckMenuItem(hMenu, presModel->mode, MF_UNCHECKED);
             presModel->mode = LOWORD(wParam);
             CheckMenuItem(hMenu, presModel->mode, MF_CHECKED);
