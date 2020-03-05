@@ -19,7 +19,7 @@ typedef struct PresentModel {
     char** strPtr;
     int mode, isOpen;
     int caretLine, caretLetter, caretIdx;
-    int action;
+    int action, reconfigurate;
 } PresentModel;
 
 //Initiate PresentModel

@@ -79,5 +79,5 @@ int maxStrLen(Storage* storage) {
     if (len > max) max = len;
 
     //printf("%i", );
-    return max - 1;
+    return max + 1;
 }

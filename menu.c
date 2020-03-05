@@ -68,9 +68,17 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
                     presModel->startLine = i;
                 }
             }
+
+            bufPtr = presModel->strPtr[presModel->amount - 1];
+            if (abs(startPtr - bufPtr) < minLen) {
+                minLen = abs(startPtr - bufPtr);
+                presModel->startLine = presModel->amount - 1;
+            }
+
             findCaretPosition(presModel);
             SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
 
+            //printf("def %i\n", presModel->caretIdx);
             InvalidateRect(*hwnd, NULL, TRUE);
             break;
         }
@@ -81,6 +89,7 @@ int menuAction(HWND* hwnd, WPARAM wParam, PresentModel* presModel) {
             CheckMenuItem(hMenu, presModel->mode, MF_CHECKED);
             SendMessage(*hwnd, WM_SIZE, 0, newLPARAM);
             InvalidateRect(*hwnd, NULL, TRUE);
+            //printf("lay %i\n", presModel->caretIdx);
             break;
         }
         case IDM_EXIT: {
